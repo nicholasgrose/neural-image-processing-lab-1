@@ -24,8 +24,8 @@ IMAGE_SIZE = 784
 
 # Use these to set the algorithm to use.
 # ALGORITHM = "guesser"
-# ALGORITHM = "custom_net"
-ALGORITHM = "tf_net"
+ALGORITHM = "custom_net"
+# ALGORITHM = "tf_net"
 
 
 class NeuralNetwork_2Layer:
@@ -158,8 +158,7 @@ def runModel(data, model):
         return guesserClassifier(data)
     elif ALGORITHM == "custom_net":
         print("Testing Custom_NN.")
-        print("Not yet implemented.")  # TODO: Write code to run your custom neural net.
-        return None
+        return model.predict(data)
     elif ALGORITHM == "tf_net":
         print("Testing TF_NN.")
         return model.predict(data)
