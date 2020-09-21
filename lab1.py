@@ -5,6 +5,8 @@ from tensorflow import keras
 from tensorflow.keras.utils import to_categorical
 import random
 
+from tensorflow.python.keras.utils.metrics_utils import ConfusionMatrix
+
 
 # Setting random seeds to keep everything deterministic.
 random.seed(1618)
@@ -21,9 +23,9 @@ NUM_CLASSES = 10
 IMAGE_SIZE = 784
 
 # Use these to set the algorithm to use.
-ALGORITHM = "guesser"
+# ALGORITHM = "guesser"
 # ALGORITHM = "custom_net"
-# ALGORITHM = "tf_net"
+ALGORITHM = "tf_net"
 
 
 class NeuralNetwork_2Layer:
@@ -37,11 +39,12 @@ class NeuralNetwork_2Layer:
 
     # Activation function.
     def __sigmoid(self, x):
-        pass  # TODO: implement
+        return 1 / (1 + np.exp(-x))
 
     # Activation prime function.
     def __sigmoidDerivative(self, x):
-        pass  # TODO: implement
+        sigmoid = self.__sigmoid(x)
+        return sigmoid * (1 - sigmoid)
 
     # Batch generator for mini-batches. Not randomized.
     def __batchGenerator(self, l, n):
@@ -50,7 +53,28 @@ class NeuralNetwork_2Layer:
 
     # Training with backpropagation.
     def train(self, xVals, yVals, epochs=100000, minibatches=True, mbs=100):
-        pass  # TODO: Implement backprop. allow minibatches. mbs should specify the size of each minibatch.
+        for epoch in range(epochs):
+            if minibatches:
+                for xBatch, yBatch in zip(self.__batchGenerator(xVals, mbs), self.__batchGenerator(yVals, mbs)):
+                    self.__train_batch(xBatch, yBatch)
+            else:
+                self.__train_batch(xVals, yVals)
+
+    def __train_batch(self, xVals, yVals):
+        # TODO: Implement backprop. allow minibatches. mbs should specify the size of each minibatch.
+        gradient_w1 = np.zeros((self.inputSize, self.neuronsPerLayer))
+        gradient_w2 = np.zeros((self.neuronsPerLayer, self.outputSize))
+
+        for xVal, yVal in zip(xVals, yVals):
+            layer1, layer2 = self.__forward(xVal.flatten())
+            error = (layer2 - yVal) * self.__sigmoidDerivative(layer2)
+            gradient_w2 += self.W2 * error
+            for index in range(len(layer1)):
+                layer1[index] = self.__sigmoidDerivative(layer1[index])
+            gradient_w1 += np.dot(self.W1 * self.W2.transpose()) * layer1 * error
+
+        self.W1 -= gradient_w1
+        self.W2 -= gradient_w2
 
     # Forward pass.
     def __forward(self, input):
@@ -91,14 +115,16 @@ def preprocessData(raw):
     (
         (xTrain, yTrain),
         (xTest, yTest),
-    ) = raw  # TODO: Add range reduction here (0-255 ==> 0.0-1.0).
-    yTrainP = to_categorical(yTrain, NUM_CLASSES)
-    yTestP = to_categorical(yTest, NUM_CLASSES)
+    ) = raw
+    xTrain = xTrain.astype(np.float) / 255.0
+    xTest = xTest.astype(np.float) / 255.0
+    yTrain = to_categorical(yTrain, NUM_CLASSES)
+    yTest = to_categorical(yTest, NUM_CLASSES)
     print("New shape of xTrain dataset: %s." % str(xTrain.shape))
     print("New shape of xTest dataset: %s." % str(xTest.shape))
-    print("New shape of yTrain dataset: %s." % str(yTrainP.shape))
-    print("New shape of yTest dataset: %s." % str(yTestP.shape))
-    return ((xTrain, yTrainP), (xTest, yTestP))
+    print("New shape of yTrain dataset: %s." % str(yTrain.shape))
+    print("New shape of yTest dataset: %s." % str(yTest.shape))
+    return ((xTrain, yTrain), (xTest, yTest))
 
 
 def trainModel(data):
@@ -109,14 +135,20 @@ def trainModel(data):
         print("Building and training Custom_NN.")
         print(
             "Not yet implemented."
-        )  # TODO: Write code to build and train your custom neural net.
-        return None
+        )
+        network = NeuralNetwork_2Layer(IMAGE_SIZE, NUM_CLASSES, 256)
+        network.train(xTrain, yTrain, epochs=10)
+        return network
     elif ALGORITHM == "tf_net":
         print("Building and training TF_NN.")
-        print(
-            "Not yet implemented."
-        )  # TODO: Write code to build and train your keras neural net.
-        return None
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(512, activation=tf.nn.relu),
+            tf.keras.layers.Dense(10, activation=tf.nn.softmax)
+        ])
+        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        model.fit(xTrain, yTrain, epochs=8)
+        return model
     else:
         raise ValueError("Algorithm not recognized.")
 
@@ -130,21 +162,40 @@ def runModel(data, model):
         return None
     elif ALGORITHM == "tf_net":
         print("Testing TF_NN.")
-        print("Not yet implemented.")  # TODO: Write code to run your keras neural net.
-        return None
+        return model.predict(data)
     else:
         raise ValueError("Algorithm not recognized.")
 
-
-def evalResults(data, preds):  # TODO: Add F1 score confusion matrix here.
+def evalResults(data, preds):
     xTest, yTest = data
-    acc = 0
-    for i in range(preds.shape[0]):
-        if np.array_equal(preds[i], yTest[i]):
-            acc = acc + 1
-    accuracy = acc / preds.shape[0]
+
+    true_positive = 0
+    true_negative = 0
+    false_positive = 0
+    false_negative = 0
+
+    failures = np.nonzero(np.round(preds) - yTest)
+    for case, failed_output in zip(failures[0], failures[1]):
+        expected = yTest[case][failed_output]
+        if expected == 1:
+            false_negative += 1
+        else:
+            false_positive += 1
+    true_positive = len(yTest) - false_negative
+    true_negative = len(yTest) * (NUM_CLASSES - 1) - false_positive
+
+    confusion_matrix = np.array([
+        [true_negative, false_positive],
+        [false_negative, true_positive]
+    ])
+
+    correct_predictions = confusion_matrix[0][0] + confusion_matrix[1][1]
+    incorrect_predictions = confusion_matrix[0][1] + confusion_matrix[1][0]
+    acc = correct_predictions / (correct_predictions + incorrect_predictions)
+
     print("Classifier algorithm: %s" % ALGORITHM)
-    print("Classifier accuracy: %f%%" % (accuracy * 100))
+    print("F1-Score confusion matrix:\n%s" % confusion_matrix)
+    print("Classifier accuracy: %f%%" % (acc * 100))
     print()
 
 
