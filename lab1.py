@@ -61,24 +61,30 @@ class NeuralNetwork_2Layer:
                 self.__train_batch(xVals, yVals)
 
     def __train_batch(self, xVals, yVals):
-        # TODO: Implement backprop. allow minibatches. mbs should specify the size of each minibatch.
-        gradient_w1 = np.zeros((self.inputSize, self.neuronsPerLayer))
-        gradient_w2 = np.zeros((self.neuronsPerLayer, self.outputSize))
+        layer1, layer2 = self.__forward(xVals)
 
-        for xVal, yVal in zip(xVals, yVals):
-            layer1, layer2 = self.__forward(xVal.flatten())
-            error = (layer2 - yVal) * self.__sigmoidDerivative(layer2)
-            gradient_w2 += self.W2 * error
-            for index in range(len(layer1)):
-                layer1[index] = self.__sigmoidDerivative(layer1[index])
-            gradient_w1 += np.dot(self.W1 * self.W2.transpose()) * layer1 * error
+        error = (layer2 - yVals) * self.__sigmoidDerivative(np.dot(layer1, self.W2))
+        gradient_w2 = np.dot(layer1.transpose(), error)
 
-        self.W1 -= gradient_w1
-        self.W2 -= gradient_w2
+        xVals_flat = self.__flatten_input(xVals)
+
+        error = np.dot(error, self.W2.transpose())
+        error *= self.__sigmoidDerivative(np.dot(xVals_flat, self.W1))
+        gradient_w1 = np.dot(xVals_flat.transpose(), error)
+
+        self.W1 -= gradient_w1 * self.lr
+        self.W2 -= gradient_w2 * self.lr
+
+    def __flatten_input(self, input):
+        inputFlattened = np.ndarray((len(input), self.inputSize))
+        for index in range(len(inputFlattened)):
+            inputFlattened[index] = input[index].flatten()
+        return inputFlattened
 
     # Forward pass.
     def __forward(self, input):
-        layer1 = self.__sigmoid(np.dot(input, self.W1))
+        inputFlattened = self.__flatten_input(input)
+        layer1 = self.__sigmoid(np.dot(inputFlattened, self.W1))
         layer2 = self.__sigmoid(np.dot(layer1, self.W2))
         return layer1, layer2
 
@@ -133,11 +139,8 @@ def trainModel(data):
         return None  # Guesser has no model, as it is just guessing.
     elif ALGORITHM == "custom_net":
         print("Building and training Custom_NN.")
-        print(
-            "Not yet implemented."
-        )
         network = NeuralNetwork_2Layer(IMAGE_SIZE, NUM_CLASSES, 256)
-        network.train(xTrain, yTrain, epochs=10)
+        network.train(xTrain, yTrain, epochs=8)
         return network
     elif ALGORITHM == "tf_net":
         print("Building and training TF_NN.")
